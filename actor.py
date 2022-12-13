@@ -18,16 +18,22 @@ class Agent:
         self.model.load_state_dict(param)
     
     def act(self, state, turn):
-        if (self.mode=='train' and np.random.rand() < 0.2) or self.mode == 'random':
-            return np.random.randint(settings.BOARD_SIZE**2)
         if turn:
             state = 1 - state - 3*(state==-1)
-        state_space = state.reshape((-1)) != -1
+        state_block = state.reshape((-1)) != -1
+        
+        if self.mode == 'common':
+            for i in range(settings.BOARD_SIZE**2):
+                if not state_block[i]:
+                    return i
+                
+        if (self.mode=='train' and np.random.rand() < 0.2) or self.mode == 'random':
+            return np.random.randint(settings.BOARD_SIZE**2)
         
         state = torch.tensor(state).unsqueeze(0)
         self.model.eval()
-        value = self.model.forward(state).detach()[0, :].cpu().numpy()
-        value[state_space] = -1e9
+        value = self.model.forward(state)[0].detach()[0, :].cpu().numpy()
+        value[state_block] = -1e9
         action = np.argmax(value)
         return int(action)
 
@@ -36,9 +42,13 @@ def gameTrain(sample_manager, model_manager):
         return
     
     env = Gobang(settings.BOARD_SIZE, settings.GAME_TARGET)
-    agents = [Agent('train'), Agent('train')]
+    agents = [Agent('train'), Agent('test')]
     agents[0].load(model_manager.getLatestModel())
-    agents[1].load(model_manager.getLatestModel())
+    agents[0].latest = True
+    #agents[1].load(model_manager.getRandomModel())
+    #agents[1].latest = True
+    np.random.shuffle(agents)
+    
     last_state = None
     last_action = None
     reward_count = np.array([0, 0])
@@ -49,7 +59,7 @@ def gameTrain(sample_manager, model_manager):
         (next_state, next_turn), reward, done, info = env.step(action)
         
         reward_count = reward_count + reward
-        if not (last_state is None):
+        if not (last_state is None) and not (agents[next_turn].mode in ['random', 'common']) and agents[next_turn].latest:
             sample_manager.sendSample(deepcopy(last_state), last_action, reward_count[next_turn], deepcopy(next_state), done, next_turn)
             reward_count[next_turn] = 0
         last_state = state
@@ -61,25 +71,31 @@ def gameTrain(sample_manager, model_manager):
     sample_manager.sendSample(deepcopy(last_state), last_action, reward_count[next_turn], deepcopy(state), done, next_turn)
         
 
-def gameTest(model):
+def gameTest(model, render=False):
     env = Gobang(settings.BOARD_SIZE, settings.GAME_TARGET)
     agents = [Agent('test'), Agent('test')]
     ours = np.random.randint(2)
     agents[ours].load(model.state_dict())
+    if render:
+        agents[ours^1].load(model.state_dict())
     
     (state, turn) = env.reset()
-    total_reward = np.array([0, 0])
+    total_reward = np.array([0., 0.])
     done = False
     while not done:
         action = agents[turn].act(state, turn)
         (next_state, next_turn), reward, done, info = env.step(action)
+        if render:
+            print(state)
+            print(action)
+            print(next_state)
+            print('\n\n\n')
         total_reward += reward
         
         state = next_state
         turn = next_turn
         
-    return total_reward[ours] - total_reward[ours^1]
-        
+    return total_reward[ours]        
 
 if __name__ == "__main__":
     sample_manager = SampleManager('sender')
@@ -90,5 +106,6 @@ if __name__ == "__main__":
         time.sleep(0.1)
         print('actor', len(model_manager.buffer))
         if len(model_manager.buffer):
-            gameTrain(sample_manager, model_manager)
+            for i in range(10):
+                gameTrain(sample_manager, model_manager)
             

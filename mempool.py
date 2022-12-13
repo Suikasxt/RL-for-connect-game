@@ -29,7 +29,7 @@ class SampleManager(threading.Thread):
         sample = {
             'state': state,
             'action': int(action),
-            'reward': int(reward),
+            'reward': float(reward),
             'next_state': next_state,
             'done': bool(done)
         }

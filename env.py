@@ -52,7 +52,7 @@ class Gobang:
         return False, None
     
     def step(self, position):
-        reward = [0, 0]
+        reward = [-0, -0]
         if type(position) == int:
             position = [position//self.size, position%self.size]
         position = np.array(position)
@@ -60,13 +60,13 @@ class Gobang:
         if self.vaildCoordinate(position) and self.state[position[0]][position[1]] == -1:
             self.state[position[0]][position[1]] = self.turn
         else:
-            reward[self.turn] -= 1
+            reward[self.turn] -= 10
         self.turn ^= 1
         
         done, winner = self.judgeFinish()
         if done and winner != -1:
-            reward[winner] += 1
-            reward[winner^1] -= 1
+            reward[winner] += 30
+            reward[winner^1] -= 30
         return (deepcopy(self.state), self.turn), reward, done, {}
         
         

@@ -7,6 +7,22 @@ from model import DQNModel
 from mempool import SampleManager
 from modelpool import ModelManager
 from actor import gameTest
+from tianshou.data import Batch
+from tianshou.policy import DQNPolicy
+import matplotlib.pyplot as plt
+
+class MyDQNPolicy(DQNPolicy):
+    def _target_q(self, batch):
+        result = self(batch, input="obs_next")
+        if self._target:
+            # target_Q = Q_old(s_, argmax(Q_new(s_, *)))
+            target_q = self(batch, model="model_old", input="obs_next").logits
+        else:
+            target_q = result.logits
+        if self._is_double:
+            return target_q[np.arange(len(result.act)), result.act]
+        else:  # Nature DQN, over estimate
+            return target_q.max(dim=1)[0]
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', type=float, default=0)
@@ -18,38 +34,22 @@ else:
 
     
 
-def train(model, sample_manager):
-    model.train()
-    optimizer = torch.optim.Adam(model.parameters(), lr=settings.LEARNING_RATE)
+def train(policy, sample_manager):
     batch_size = settings.BATCH_SIZE
     loss_list = []
     for i in range(100):
-        optimizer.zero_grad()
         state, action, reward, next_state, done = sample_manager.getSample(batch_size)
+        batch = Batch(obs=torch.tensor(state, device=device),
+                      act=torch.tensor(action, device=device),
+                      rew=torch.tensor(reward, device=device),
+                      obs_next=torch.tensor(next_state, device=device),
+                      done=torch.tensor(done, device=device),
+                      info=[{}]*batch_size)
         
-        state = torch.tensor(state, device=device)
-        action = torch.tensor(action, device=device)
-        reward = torch.tensor(reward, device=device)
-        next_state = torch.tensor(next_state, device=device)
-        done = torch.tensor(done, device=device, dtype=torch.bool)
-        
-        
-        target_value = torch.max(model(next_state).detach(), dim=-1)[0]
-        value = model(state)[(torch.arange(batch_size), action)]
-        target_value = target_value * (~done) * settings.GAMMA + reward
-        
-        #print(state[0])
-        #print(action[0])
-        #print(next_state[0])
-        #print(value[0])
-        #print(target_value[0])
-        #print(reward[0])
-        loss = torch.sum((target_value - value)**2)
-        loss.backward()
-        optimizer.step()
-        
-        loss_list.append(loss.item())
-    print(np.mean(loss_list))
+        batch.returns=(policy._target_q(batch) * (~batch.done) * settings.GAMMA + batch.rew).detach()
+        loss = policy.learn(batch)['loss']
+        loss_list.append(loss)
+    return np.mean(loss_list)
         
         
         
@@ -57,6 +57,8 @@ def train(model, sample_manager):
 if __name__ == "__main__":
     model = DQNModel()
     model.to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=settings.LEARNING_RATE)
+    policy = MyDQNPolicy(model, optimizer, settings.GAMMA, target_update_freq=0)
     #print(model.state_dict())
     #exit(0)
     
@@ -64,17 +66,38 @@ if __name__ == "__main__":
     model_manager = ModelManager('sender')
     sample_manager.start()
     
+    plt.ion()
+    reward_list = []
+    loss_list = []
+    epoch = 0
     while True:
         torch.manual_seed(time.time())
-        for i in range(3):
-            print('learner', len(sample_manager.buffer))
+        print('learner', len(sample_manager.buffer))
+        for i in range(1):
+            loss = None
             if len(sample_manager.buffer):
-                train(model, sample_manager)
-            time.sleep(0.1)
-        model_manager.sendModel(model.state_dict())
-        model_manager.saveModel(model.state_dict())
+                loss = train(policy, sample_manager)
+        
+        if epoch%5==0:
+            model_manager.sendModel(policy.model.state_dict())
+            gameTest(policy.model, True)
+            model_manager.saveModel(policy.model.state_dict())
+        epoch += 1
         
         reward = 0
         for i in range(100):
-            reward += gameTest(model)
-        print('Test reward', reward)
+            reward += gameTest(policy.model)
+        #gameTest(policy.model, True)
+        #print('Test reward', reward)
+        reward_list.append(reward)
+        if loss is not None:
+            loss_list.append(loss)
+        
+        plt.subplot(1, 2, 1)
+        plt.plot(reward_list)
+        plt.title('rew')
+        plt.subplot(1, 2, 2)
+        plt.plot(loss_list)
+        plt.title('loss')
+        plt.pause(0.1)
+        

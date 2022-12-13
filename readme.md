@@ -1,13 +1,14 @@
-+ 运行方式：一个终端启动learner.py，一个终端启动actor.py，需要装pytorch。
++ 五子棋太难训了，现在转做一个井字棋的ai了，然后如果直接拿自对弈来当测试环境训练比较久，现在的环境是跟一个随机策略下井字棋……不过无所谓了，压缩算法那边关注一下压缩率就行。
++ 运行方式：一个终端启动learner.py，一个终端启动actor.py，需要装pytorch和tianshou。
   + modelpool用于传输模型（TCP），mempool由于传输样本（UDP）
   + learner端会一个线程训练和发送模型，一个线程监听样本的传入。
   + actor端会一个线程执行对战同时发送样本，一个线程监听模型的传入。
-+ 棋盘大小、几连珠判胜之类的参数都搁在setting.py里面了
-+ 目前训练效果还很差，得接着调，但架构基本上搭好了，可以关注两处能数据压缩的地方：
++ 棋盘大小、几连珠判胜之类的参数都搁在setting.py里面了.
++ 可以关注两处能数据压缩的地方：
   + modelpool：
     + 目前是把模型用torch的state_dict提取参数后，用json转成字符串发送，可以考虑有损地做压缩，比如记录一下模型的id，然后只记录我比上个模型修改了哪些参数，同时舍弃一些改动很小的参数。但是要注意模型池是可能删除模型的，这部分逻辑还要再优化一下。
     + 接口是modelmanager里面的modelEncode和modelDecode，encode是learner端发送前的编码操作，把模型参数转成字节流，decode再把字节流转回模型参数，需要把这俩重写一下
-  + mempool
+  + mempool：
     + 目前是原封不动地打包整个棋盘的状态，可以尝试用一些压缩算法，或者记录样本id然后增量更新。这部分基本不考虑有损压缩了，样本数据损失了的话可能就训练不了，无损压缩就行。
     + 棋盘的表示方式是state里面0和1表示黑白棋子，-1表示空位。
-    + 接口是SampleManager里面的sampleEnode和sampleDecode
+    + 接口是SampleManager里面的sampleEnode和sampleDecode。
