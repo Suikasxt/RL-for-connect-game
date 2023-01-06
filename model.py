@@ -26,7 +26,8 @@ class DQNModel(torch.nn.Module):
     def forward(self, obs, state=None, info={}):
         obs_0 = (obs == 0).unsqueeze(1)
         obs_1 = (obs == 1).unsqueeze(1)
-        obs = torch.concat((obs_0, obs_1), dim=1).float()
+
+        obs = torch.cat((obs_0, obs_1), dim=1).float()
         feature = self.conv(obs)
         feature = feature.view(feature.shape[0], -1)
         value = self.fc(feature)
