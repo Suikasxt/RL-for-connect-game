@@ -70,9 +70,11 @@ if __name__ == "__main__":
     reward_list = []
     loss_list = []
     epoch = 0
-    while True:
+    sample_list = []
+    while epoch < 80:
         torch.manual_seed(time.time())
         print('learner', len(sample_manager.buffer))
+        sample_list.append(len(sample_manager.buffer))
         for i in range(1):
             loss = None
             if len(sample_manager.buffer):
@@ -100,4 +102,9 @@ if __name__ == "__main__":
         plt.plot(loss_list)
         plt.title('loss')
         plt.pause(0.1)
+        
+    print(reward_list)
+    print(reward_list)
+    print(loss_list)
+    print(reward_list)
         

@@ -54,6 +54,7 @@ def gameTrain(sample_manager, model_manager):
     reward_count = np.array([0, 0])
     (state, turn) = env.reset()
     done = False
+    last_action = None
     while not done:
         action = agents[turn].act(deepcopy(state), turn)
         (next_state, next_turn), reward, done, info = env.step(action)
@@ -62,13 +63,20 @@ def gameTrain(sample_manager, model_manager):
         if not (last_state is None) and not (agents[next_turn].mode in ['random', 'common']) and agents[next_turn].latest:
             sample_manager.sendSample(deepcopy(last_state), last_action, reward_count[next_turn], deepcopy(next_state), done, next_turn)
             reward_count[next_turn] = 0
-        last_state = state
+        # *********************** compress ***********************
+        if not (agents[next_turn].mode in ['random', 'common']) and agents[next_turn].latest:
+            sample_manager.sendSample_compress(last_action, action, reward_count[next_turn], done, next_turn)
+        # ********************************************************
         last_action = action
+        last_state = state
         state = next_state
         turn = next_turn
     
     next_turn ^= 1
     sample_manager.sendSample(deepcopy(last_state), last_action, reward_count[next_turn], deepcopy(state), done, next_turn)
+    # *********************** compress ***********************
+    sample_manager.sendSample_compress(last_action, None, reward_count[next_turn], done, next_turn)
+    # ********************************************************
         
 
 def gameTest(model, render=False):
